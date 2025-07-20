@@ -2,6 +2,11 @@
 edition = "2021"
 name = "md2html"
 version = "0.1.0"
+license = "MIT"
+description = "A high-performance, zero-dependency Markdown to HTML parser written in Rust with optional SIMD acceleration"
+repository = "https://github.com/zhenweijia/md2html"
+keywords = ["markdown", "html", "parser", "simd", "performance"]
+categories = ["parsing", "text-processing"]
 
 [dependencies]
 # Real SIMD dependencies - only included when simd feature is enabled

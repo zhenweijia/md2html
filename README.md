@@ -247,7 +247,7 @@ See [`benchmark/`](./benchmark/) for detailed results and analysis.
 
 ## 📝 License
 
-This project is open source. See LICENSE file for details.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ## 🔗 Related Projects
 
