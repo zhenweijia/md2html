@@ -34,13 +34,13 @@ fn create_medium_markdown() -> String {
     let mut content = String::new();
 
     for i in 0..10 {
-        content.push_str(&format!("# Section {}\n\n", i));
+        content.push_str(&format!("# Section {i}\n\n"));
         content.push_str("This is a paragraph with **bold** and *italic* text. ");
         content.push_str("It contains `inline code` and [links](https://example.com).\n\n");
 
         content.push_str("## Subsection\n\n");
         for j in 0..5 {
-            content.push_str(&format!("- List item {}\n", j));
+            content.push_str(&format!("- List item {j}\n"));
         }
         content.push('\n');
 
@@ -58,10 +58,10 @@ fn create_large_markdown() -> String {
     let mut content = String::new();
 
     for i in 0..100 {
-        content.push_str(&format!("# Chapter {}\n\n", i));
+        content.push_str(&format!("# Chapter {i}\n\n"));
 
         for j in 0..10 {
-            content.push_str(&format!("## Section {}.{}\n\n", i, j));
+            content.push_str(&format!("## Section {i}.{j}\n\n"));
             content.push_str("This is a long paragraph with various **formatting** options. ");
             content
                 .push_str("It includes *italics*, `code`, and [multiple](https://example1.com) ");
@@ -73,7 +73,7 @@ fn create_large_markdown() -> String {
             if j % 2 == 0 {
                 content.push_str("### Unordered List\n\n");
                 for k in 0..8 {
-                    content.push_str(&format!("- Item {}\n", k));
+                    content.push_str(&format!("- Item {k}\n"));
                 }
             } else {
                 content.push_str("### Ordered List\n\n");
