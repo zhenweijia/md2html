@@ -4,6 +4,13 @@ name = "md2html"
 version = "0.1.0"
 
 [dependencies]
+# Real SIMD dependencies - only included when simd feature is enabled
+memchr = { version = "2.7", optional = true }
+bytecount = { version = "0.6", optional = true }
+
+[features]
+default = []
+simd = ["memchr", "bytecount"]
 
 [dev-dependencies]
 comrak = "0.40.0"

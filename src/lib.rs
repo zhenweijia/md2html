@@ -1,5 +1,8 @@
 use std::fmt::Write;
 
+mod simd;
+use simd::{html_escape_simd_into, find_delimiter_simd, detect_line_type_simd, LineType};
+
 pub struct MarkdownParser<'a> {
     input: &'a str,
 }
@@ -18,34 +21,45 @@ impl<'a> MarkdownParser<'a> {
         while i < lines.len() {
             let line = lines[i];
             
-            if line.trim().is_empty() {
-                i += 1;
-                continue;
-            }
-
-            if let Some(header) = self.parse_header(line) {
-                output.push_str(&header);
-                output.push('\n');
-            } else if self.is_code_block_start(line) {
-                let (code_block, lines_consumed) = self.parse_code_block(&lines[i..]);
-                output.push_str(&code_block);
-                output.push('\n');
-                i += lines_consumed - 1;
-            } else if self.is_unordered_list_item(line) {
-                let (list, lines_consumed) = self.parse_unordered_list(&lines[i..]);
-                output.push_str(&list);
-                output.push('\n');
-                i += lines_consumed - 1;
-            } else if self.is_ordered_list_item(line) {
-                let (list, lines_consumed) = self.parse_ordered_list(&lines[i..]);
-                output.push_str(&list);
-                output.push('\n');
-                i += lines_consumed - 1;
-            } else {
-                let (paragraph, lines_consumed) = self.parse_paragraph(&lines[i..]);
-                output.push_str(&paragraph);
-                output.push('\n');
-                i += lines_consumed - 1;
+            // Use SIMD-accelerated line type detection
+            match detect_line_type_simd(line) {
+                LineType::Empty => {
+                    i += 1;
+                    continue;
+                }
+                LineType::Header(level) => {
+                    let content = line.trim_start().get((level + 1)..).unwrap_or("").trim();
+                    let mut result = String::with_capacity(content.len() + 20);
+                    write!(result, "<h{level}>").unwrap();
+                    self.process_inline_elements_into(content, &mut result);
+                    write!(result, "</h{level}>").unwrap();
+                    output.push_str(&result);
+                    output.push('\n');
+                }
+                LineType::CodeBlock => {
+                    let (code_block, lines_consumed) = self.parse_code_block(&lines[i..]);
+                    output.push_str(&code_block);
+                    output.push('\n');
+                    i += lines_consumed - 1;
+                }
+                LineType::UnorderedList => {
+                    let (list, lines_consumed) = self.parse_unordered_list(&lines[i..]);
+                    output.push_str(&list);
+                    output.push('\n');
+                    i += lines_consumed - 1;
+                }
+                LineType::OrderedList => {
+                    let (list, lines_consumed) = self.parse_ordered_list(&lines[i..]);
+                    output.push_str(&list);
+                    output.push('\n');
+                    i += lines_consumed - 1;
+                }
+                LineType::Paragraph => {
+                    let (paragraph, lines_consumed) = self.parse_paragraph(&lines[i..]);
+                    output.push_str(&paragraph);
+                    output.push('\n');
+                    i += lines_consumed - 1;
+                }
             }
             
             i += 1;
@@ -61,9 +75,9 @@ impl<'a> MarkdownParser<'a> {
         if level > 0 && level <= 6 && trimmed.as_bytes().get(level) == Some(&b' ') {
             let content = trimmed[(level + 1)..].trim();
             let mut result = String::with_capacity(content.len() + 20);
-            write!(result, "<h{}>", level).unwrap();
+            write!(result, "<h{level}>").unwrap();
             self.process_inline_elements_into(content, &mut result);
-            write!(result, "</h{}>", level).unwrap();
+            write!(result, "</h{level}>").unwrap();
             Some(result)
         } else {
             None
@@ -88,7 +102,7 @@ impl<'a> MarkdownParser<'a> {
             if i > 1 {
                 result.push('\n');
             }
-            html_escape_into(lines[i], &mut result);
+            html_escape_simd_into(lines[i], &mut result);
             i += 1;
         }
         
@@ -251,16 +265,15 @@ impl<'a> MarkdownParser<'a> {
             return None;
         }
 
-        let mut end = start + 2;
-        while end + 1 < bytes.len() {
-            if bytes[end] == b'*' && bytes[end + 1] == b'*' {
+        // Use SIMD to find closing **
+        if let Some(end_pos) = find_delimiter_simd(text, b'*', start + 2) {
+            if end_pos + 1 < bytes.len() && bytes[end_pos + 1] == b'*' {
                 output.push_str("<strong>");
-                let content = &text[(start + 2)..end];
+                let content = &text[(start + 2)..end_pos];
                 self.process_inline_elements_into(content, output);
                 output.push_str("</strong>");
-                return Some(end - start + 2);
+                return Some(end_pos - start + 2);
             }
-            end += 1;
         }
         None
     }
@@ -276,16 +289,13 @@ impl<'a> MarkdownParser<'a> {
             return None;
         }
 
-        let mut end = start + 1;
-        while end < bytes.len() {
-            if bytes[end] == delimiter {
-                output.push_str("<em>");
-                let content = &text[(start + 1)..end];
-                output.push_str(content);
-                output.push_str("</em>");
-                return Some(end - start + 1);
-            }
-            end += 1;
+        // Use SIMD to find closing delimiter
+        if let Some(end_pos) = find_delimiter_simd(text, delimiter, start + 1) {
+            output.push_str("<em>");
+            let content = &text[(start + 1)..end_pos];
+            output.push_str(content);
+            output.push_str("</em>");
+            return Some(end_pos - start + 1);
         }
         None
     }
@@ -296,16 +306,13 @@ impl<'a> MarkdownParser<'a> {
             return None;
         }
 
-        let mut end = start + 1;
-        while end < bytes.len() {
-            if bytes[end] == b'`' {
-                output.push_str("<code>");
-                let content = &text[(start + 1)..end];
-                html_escape_into(content, output);
-                output.push_str("</code>");
-                return Some(end - start + 1);
-            }
-            end += 1;
+        // Use SIMD to find closing backtick
+        if let Some(end_pos) = find_delimiter_simd(text, b'`', start + 1) {
+            output.push_str("<code>");
+            let content = &text[(start + 1)..end_pos];
+            html_escape_simd_into(content, output);
+            output.push_str("</code>");
+            return Some(end_pos - start + 1);
         }
         None
     }
@@ -316,50 +323,29 @@ impl<'a> MarkdownParser<'a> {
             return None;
         }
 
-        let mut bracket_end = start + 1;
-        while bracket_end < bytes.len() && bytes[bracket_end] != b']' {
-            bracket_end += 1;
-        }
-
-        if bracket_end >= bytes.len() || bracket_end + 1 >= bytes.len() || bytes[bracket_end + 1] != b'(' {
+        // Use SIMD to find closing bracket and parenthesis
+        let bracket_end = find_delimiter_simd(text, b']', start + 1)?;
+        
+        if bracket_end + 1 >= bytes.len() || bytes[bracket_end + 1] != b'(' {
             return None;
         }
 
-        let mut paren_end = bracket_end + 2;
-        while paren_end < bytes.len() && bytes[paren_end] != b')' {
-            paren_end += 1;
-        }
-
-        if paren_end >= bytes.len() {
-            return None;
-        }
+        let paren_end = find_delimiter_simd(text, b')', bracket_end + 2)?;
 
         let link_text = &text[(start + 1)..bracket_end];
         let url = &text[(bracket_end + 2)..paren_end];
         
         output.push_str("<a href=\"");
-        html_escape_into(url, output);
+        html_escape_simd_into(url, output);
         output.push_str("\">");
-        html_escape_into(link_text, output);
+        html_escape_simd_into(link_text, output);
         output.push_str("</a>");
         
         Some(paren_end - start + 1)
     }
 }
 
-#[inline]
-fn html_escape_into(text: &str, output: &mut String) {
-    for byte in text.bytes() {
-        match byte {
-            b'&' => output.push_str("&amp;"),
-            b'<' => output.push_str("&lt;"),
-            b'>' => output.push_str("&gt;"),
-            b'"' => output.push_str("&quot;"),
-            b'\'' => output.push_str("&#39;"),
-            _ => output.push(byte as char),
-        }
-    }
-}
+// Legacy function removed - all code now uses html_escape_simd_into directly
 
 #[cfg(test)]
 mod tests {
