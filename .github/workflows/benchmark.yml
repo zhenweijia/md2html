@@ -60,7 +60,7 @@ jobs:
           git fetch origin $BASELINE_BRANCH
           git checkout origin/$BASELINE_BRANCH
           # Run baseline benchmark
-          cargo bench --features simd -- --save-baseline baseline
+          cargo bench --features simd --bench markdown_parsers -- --save-baseline baseline
           # Return to current commit
           git checkout $CURRENT_SHA
         else
@@ -69,16 +69,16 @@ jobs:
           PARENT_SHA=$(git rev-parse HEAD~1)
           if git cat-file -e $PARENT_SHA 2>/dev/null; then
             git checkout $PARENT_SHA
-            cargo bench --features simd -- --save-baseline baseline
+            cargo bench --features simd --bench markdown_parsers -- --save-baseline baseline
             git checkout ${{ github.sha }}
           else
             echo "No parent commit found, creating dummy baseline"
-            cargo bench --features simd -- --save-baseline baseline
+            cargo bench --features simd --bench markdown_parsers -- --save-baseline baseline
           fi
         fi
 
     - name: Run current benchmark
-      run: cargo bench --features simd -- --save-baseline current
+      run: cargo bench --features simd --bench markdown_parsers -- --save-baseline current
 
     - name: Compare benchmarks and check for regression
       run: |
@@ -206,10 +206,10 @@ jobs:
         key: ${{ runner.os }}-cargo-simd-benchmark-${{ hashFiles('**/Cargo.lock') }}
 
     - name: Run default benchmark (no SIMD)
-      run: cargo bench -- --save-baseline default
+      run: cargo bench --bench markdown_parsers -- --save-baseline default
 
     - name: Run SIMD benchmark
-      run: cargo bench --features simd -- --save-baseline simd
+      run: cargo bench --features simd --bench markdown_parsers -- --save-baseline simd
 
     - name: Install critcmp
       run: cargo install critcmp
