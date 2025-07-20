@@ -1,4 +1,5 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId};
+use criterion::{criterion_group, criterion_main, Criterion, BenchmarkId};
+use std::hint::black_box;
 use md2html::MarkdownParser;
 use pulldown_cmark::{Parser, Options, html};
 use comrak::{markdown_to_html, ComrakOptions};
