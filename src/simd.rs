@@ -215,10 +215,9 @@ pub fn detect_line_type_simd(line: &str) -> LineType {
 
         if bytes[0].is_ascii_digit() {
             if let Some(dot_pos) = bytes.iter().position(|&b| b == b'.') {
-                if dot_pos > 0 && bytes.get(dot_pos + 1) == Some(&b' ') {
-                    if bytes[..dot_pos].iter().all(|&b| b.is_ascii_digit()) {
-                        return LineType::OrderedList;
-                    }
+                if dot_pos > 0 && bytes.get(dot_pos + 1) == Some(&b' ')
+                    && bytes[..dot_pos].iter().all(|&b| b.is_ascii_digit()) {
+                    return LineType::OrderedList;
                 }
             }
         }
