@@ -24,7 +24,7 @@ jobs:
       uses: dtolnay/rust-toolchain@stable
 
     - name: Cache dependencies
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: |
           ~/.cargo/registry
@@ -40,7 +40,7 @@ jobs:
 
     - name: Run baseline benchmark (master/main)
       run: |
-        # Switch to master/main branch to establish baseline
+        # Determine baseline branch
         if git show-ref --verify --quiet refs/remotes/origin/master; then
           BASELINE_BRANCH="master"
         else
@@ -48,16 +48,33 @@ jobs:
         fi
         
         echo "Using $BASELINE_BRANCH as baseline branch"
+        echo "Current ref: ${{ github.ref_name }}"
+        echo "Current sha: ${{ github.sha }}"
         
-        # Only run baseline if we're not on the baseline branch
-        if [ "${{ github.ref_name }}" != "$BASELINE_BRANCH" ]; then
+        # Check if we're on a PR or different branch
+        if [ "${{ github.event_name }}" = "pull_request" ] || [ "${{ github.ref_name }}" != "$BASELINE_BRANCH" ]; then
+          echo "Running baseline benchmark from $BASELINE_BRANCH"
+          # Save current state
+          CURRENT_SHA=${{ github.sha }}
+          # Checkout baseline branch
+          git fetch origin $BASELINE_BRANCH
           git checkout origin/$BASELINE_BRANCH
+          # Run baseline benchmark
           cargo bench --features simd -- --save-baseline baseline
-          git checkout ${{ github.sha }}
+          # Return to current commit
+          git checkout $CURRENT_SHA
         else
-          echo "On baseline branch, skipping baseline benchmark"
-          # Create a dummy baseline for comparison
-          cargo bench --features simd -- --save-baseline baseline
+          echo "On baseline branch, using previous commit as baseline"
+          # Use parent commit as baseline when on master/main
+          PARENT_SHA=$(git rev-parse HEAD~1)
+          if git cat-file -e $PARENT_SHA 2>/dev/null; then
+            git checkout $PARENT_SHA
+            cargo bench --features simd -- --save-baseline baseline
+            git checkout ${{ github.sha }}
+          else
+            echo "No parent commit found, creating dummy baseline"
+            cargo bench --features simd -- --save-baseline baseline
+          fi
         fi
 
     - name: Run current benchmark
@@ -122,7 +139,7 @@ jobs:
         EOF
 
     - name: Upload benchmark results
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       if: always()
       with:
         name: benchmark-results
@@ -180,7 +197,7 @@ jobs:
       uses: dtolnay/rust-toolchain@stable
 
     - name: Cache dependencies
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: |
           ~/.cargo/registry
@@ -205,7 +222,7 @@ jobs:
         echo "============================================="
 
     - name: Upload SIMD comparison
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: simd-comparison
         path: simd_comparison.txt
