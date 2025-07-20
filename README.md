@@ -1,5 +1,10 @@
 # md2html - Fast Markdown to HTML Parser
 
+[![Tests](https://github.com/zhenweijia/md2html/workflows/Tests/badge.svg)](https://github.com/zhenweijia/md2html/actions/workflows/test.yml)
+[![Performance Benchmark](https://github.com/zhenweijia/md2html/workflows/Performance%20Benchmark/badge.svg)](https://github.com/zhenweijia/md2html/actions/workflows/benchmark.yml)
+[![Security Audit](https://github.com/zhenweijia/md2html/workflows/Security%20Audit/badge.svg)](https://github.com/zhenweijia/md2html/actions/workflows/security.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 A high-performance, zero-dependency Markdown to HTML parser written in Rust with optional SIMD acceleration. This implementation demonstrates how careful optimization can achieve competitive performance while maintaining code simplicity.
 
 ## 🚀 Performance
