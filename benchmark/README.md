@@ -4,7 +4,7 @@ This directory contains performance benchmarks comparing our `md2html` parser wi
 
 ## Structure
 
-```
+```text
 benchmark/
 ├── README.md           # This file
 ├── results.md          # Benchmark results and analysis
@@ -23,6 +23,7 @@ cargo bench
 ```
 
 This will:
+
 1. Compile all parsers with optimizations
 2. Run benchmarks using Criterion.rs
 3. Generate detailed reports in `target/criterion/`
@@ -30,11 +31,13 @@ This will:
 ## Parsers Compared
 
 1. **md2html** - Our implementation
+
    - Simple, dependency-free parser
    - Supports basic Markdown features
    - Educational focus
 
 2. **pulldown-cmark** - Industry standard
+
    - Event-based parser
    - Highly optimized
    - CommonMark compliant
@@ -55,6 +58,7 @@ See [results.md](./results.md) for detailed analysis.
 ## Sample Documents
 
 The benchmark uses three document sizes:
+
 - **Small**: Basic features, quick parsing
 - **Medium**: Mixed content, realistic blog post
 - **Large**: Stress test with extensive content
@@ -68,6 +72,7 @@ The benchmark uses three document sizes:
 ## Future Improvements
 
 Potential optimizations for md2html:
+
 1. Event-based parsing like pulldown-cmark
 2. SIMD optimizations for pattern matching
 3. Memory pool for string allocations

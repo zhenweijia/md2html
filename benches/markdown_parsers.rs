@@ -103,7 +103,7 @@ fn bench_md2html(c: &mut Criterion) {
         &small,
         |b, input| {
             b.iter(|| {
-                let mut parser = MarkdownParser::new(input.clone());
+                let parser = MarkdownParser::new(input);
                 black_box(parser.parse())
             });
         },
@@ -114,7 +114,7 @@ fn bench_md2html(c: &mut Criterion) {
         &medium,
         |b, input| {
             b.iter(|| {
-                let mut parser = MarkdownParser::new(input.clone());
+                let parser = MarkdownParser::new(input);
                 black_box(parser.parse())
             });
         },
@@ -125,7 +125,7 @@ fn bench_md2html(c: &mut Criterion) {
         &large,
         |b, input| {
             b.iter(|| {
-                let mut parser = MarkdownParser::new(input.clone());
+                let parser = MarkdownParser::new(input);
                 black_box(parser.parse())
             });
         },

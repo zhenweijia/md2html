@@ -32,7 +32,7 @@ fn main() {
         buffer
     };
 
-    let mut parser = MarkdownParser::new(input);
+    let parser = MarkdownParser::new(&input);
     let html_output = parser.parse();
 
     if args.len() > 2 {

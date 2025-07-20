@@ -1,17 +1,18 @@
 use std::fmt::Write;
 
-pub struct MarkdownParser {
-    input: String,
+pub struct MarkdownParser<'a> {
+    input: &'a str,
 }
 
-impl MarkdownParser {
-    pub fn new(input: String) -> Self {
+impl<'a> MarkdownParser<'a> {
+    pub fn new(input: &'a str) -> Self {
         Self { input }
     }
 
-    pub fn parse(&mut self) -> String {
-        let mut output = String::new();
+    pub fn parse(&self) -> String {
         let lines: Vec<&str> = self.input.lines().collect();
+        let estimated_capacity = self.input.len() * 2;
+        let mut output = String::with_capacity(estimated_capacity);
         let mut i = 0;
 
         while i < lines.len() {
@@ -55,19 +56,23 @@ impl MarkdownParser {
 
     fn parse_header(&self, line: &str) -> Option<String> {
         let trimmed = line.trim_start();
-        let level = trimmed.chars().take_while(|&c| c == '#').count();
+        let level = trimmed.bytes().take_while(|&b| b == b'#').count();
         
-        if level > 0 && level <= 6 && trimmed.chars().nth(level) == Some(' ') {
+        if level > 0 && level <= 6 && trimmed.as_bytes().get(level) == Some(&b' ') {
             let content = trimmed[(level + 1)..].trim();
-            let processed_content = self.process_inline_elements(content);
-            Some(format!("<h{level}>{processed_content}</h{level}>"))
+            let mut result = String::with_capacity(content.len() + 20);
+            write!(result, "<h{}>", level).unwrap();
+            self.process_inline_elements_into(content, &mut result);
+            write!(result, "</h{}>", level).unwrap();
+            Some(result)
         } else {
             None
         }
     }
 
+    #[inline]
     fn is_code_block_start(&self, line: &str) -> bool {
-        line.trim().starts_with("```")
+        line.trim_start().starts_with("```")
     }
 
     fn parse_code_block(&self, lines: &[&str]) -> (String, usize) {
@@ -75,15 +80,15 @@ impl MarkdownParser {
             return (String::new(), 0);
         }
 
-        let mut result = String::from("<pre><code>");
-        let _language = lines[0].trim().strip_prefix("```").unwrap_or("").trim();
+        let mut result = String::with_capacity(512);
+        result.push_str("<pre><code>");
         
         let mut i = 1;
-        while i < lines.len() && !lines[i].trim().starts_with("```") {
+        while i < lines.len() && !lines[i].trim_start().starts_with("```") {
             if i > 1 {
                 result.push('\n');
             }
-            result.push_str(&html_escape(lines[i]));
+            html_escape_into(lines[i], &mut result);
             i += 1;
         }
         
@@ -91,19 +96,22 @@ impl MarkdownParser {
         (result, i + 1)
     }
 
+    #[inline]
     fn is_unordered_list_item(&self, line: &str) -> bool {
         let trimmed = line.trim_start();
-        trimmed.starts_with("- ") || trimmed.starts_with("* ") || trimmed.starts_with("+ ")
+        trimmed.len() >= 2 && matches!(trimmed.as_bytes(), [b'-' | b'*' | b'+', b' ', ..])
     }
 
     fn parse_unordered_list(&self, lines: &[&str]) -> (String, usize) {
-        let mut result = String::from("<ul>\n");
+        let mut result = String::with_capacity(256);
+        result.push_str("<ul>\n");
         let mut i = 0;
 
         while i < lines.len() && self.is_unordered_list_item(lines[i]) {
             let content = lines[i].trim_start().get(2..).unwrap_or("").trim();
-            let processed_content = self.process_inline_elements(content);
-            writeln!(result, "  <li>{processed_content}</li>").unwrap();
+            result.push_str("  <li>");
+            self.process_inline_elements_into(content, &mut result);
+            result.push_str("</li>\n");
             i += 1;
         }
 
@@ -111,25 +119,28 @@ impl MarkdownParser {
         (result, i)
     }
 
+    #[inline]
     fn is_ordered_list_item(&self, line: &str) -> bool {
         let trimmed = line.trim_start();
         if let Some(dot_pos) = trimmed.find(". ") {
-            trimmed[..dot_pos].chars().all(|c| c.is_numeric())
+            dot_pos > 0 && trimmed[..dot_pos].bytes().all(|b| b.is_ascii_digit())
         } else {
             false
         }
     }
 
     fn parse_ordered_list(&self, lines: &[&str]) -> (String, usize) {
-        let mut result = String::from("<ol>\n");
+        let mut result = String::with_capacity(256);
+        result.push_str("<ol>\n");
         let mut i = 0;
 
         while i < lines.len() && self.is_ordered_list_item(lines[i]) {
             let trimmed = lines[i].trim_start();
             if let Some(dot_pos) = trimmed.find(". ") {
                 let content = trimmed[(dot_pos + 2)..].trim();
-                let processed_content = self.process_inline_elements(content);
-                writeln!(result, "  <li>{processed_content}</li>").unwrap();
+                result.push_str("  <li>");
+                self.process_inline_elements_into(content, &mut result);
+                result.push_str("</li>\n");
             }
             i += 1;
         }
@@ -139,8 +150,9 @@ impl MarkdownParser {
     }
 
     fn parse_paragraph(&self, lines: &[&str]) -> (String, usize) {
-        let mut paragraph_lines = Vec::new();
+        let mut paragraph_content = String::with_capacity(256);
         let mut i = 0;
+        let mut first_line = true;
 
         while i < lines.len() {
             let line = lines[i];
@@ -151,153 +163,202 @@ impl MarkdownParser {
                 || self.is_ordered_list_item(line) {
                 break;
             }
-            paragraph_lines.push(line);
+            
+            if !first_line {
+                paragraph_content.push(' ');
+            }
+            paragraph_content.push_str(line);
+            first_line = false;
             i += 1;
         }
 
-        let content = paragraph_lines.join(" ");
-        let processed_content = self.process_inline_elements(&content);
-        (format!("<p>{processed_content}</p>"), i)
+        let mut result = String::with_capacity(paragraph_content.len() + 20);
+        result.push_str("<p>");
+        self.process_inline_elements_into(&paragraph_content, &mut result);
+        result.push_str("</p>");
+        (result, i)
     }
 
-    fn process_inline_elements(&self, text: &str) -> String {
-        let mut result = String::new();
-        let chars: Vec<char> = text.chars().collect();
-        let mut i = 0;
+    fn process_inline_elements_into(&self, text: &str, output: &mut String) {
+        let bytes = text.as_bytes();
+        let mut i= 0;
 
-        while i < chars.len() {
-            if i + 1 < chars.len() && chars[i] == '*' && chars[i + 1] == '*' {
-                let (bold_text, consumed) = self.parse_bold(&chars[i..]);
-                if consumed > 0 {
-                    result.push_str(&bold_text);
-                    i += consumed;
-                    continue;
+        while i < bytes.len() {
+            match bytes[i] {
+                b'*' => {
+                    if i + 1 < bytes.len() && bytes[i + 1] == b'*' {
+                        if let Some(consumed) = self.try_parse_bold(text, i, output) {
+                            i += consumed;
+                            continue;
+                        }
+                    }
+                    if let Some(consumed) = self.try_parse_italic(text, i, output) {
+                        i += consumed;
+                        continue;
+                    }
+                    output.push('*');
+                }
+                b'_' => {
+                    if let Some(consumed) = self.try_parse_italic(text, i, output) {
+                        i += consumed;
+                        continue;
+                    }
+                    output.push('_');
+                }
+                b'`' => {
+                    if let Some(consumed) = self.try_parse_inline_code(text, i, output) {
+                        i += consumed;
+                        continue;
+                    }
+                    output.push('`');
+                }
+                b'[' => {
+                    if let Some(consumed) = self.try_parse_link(text, i, output) {
+                        i += consumed;
+                        continue;
+                    }
+                    output.push('[');
+                }
+                b'&' => {
+                    output.push_str("&amp;");
+                }
+                b'<' => {
+                    output.push_str("&lt;");
+                }
+                b'>' => {
+                    output.push_str("&gt;");
+                }
+                b'"' => {
+                    output.push_str("&quot;");
+                }
+                b'\'' => {
+                    output.push_str("&#39;");
+                }
+                _ => {
+                    if let Some(ch) = text[i..].chars().next() {
+                        output.push(ch);
+                        i += ch.len_utf8() - 1;
+                    }
                 }
             }
-
-            if chars[i] == '*' || chars[i] == '_' {
-                let (italic_text, consumed) = self.parse_italic(&chars[i..]);
-                if consumed > 0 {
-                    result.push_str(&italic_text);
-                    i += consumed;
-                    continue;
-                }
-            }
-
-            if chars[i] == '`' {
-                let (code_text, consumed) = self.parse_inline_code(&chars[i..]);
-                if consumed > 0 {
-                    result.push_str(&code_text);
-                    i += consumed;
-                    continue;
-                }
-            }
-
-            if chars[i] == '[' {
-                let (link_text, consumed) = self.parse_link(&chars[i..]);
-                if consumed > 0 {
-                    result.push_str(&link_text);
-                    i += consumed;
-                    continue;
-                }
-            }
-
-            result.push(chars[i]);
             i += 1;
         }
-
-        result
     }
 
-    fn parse_bold(&self, chars: &[char]) -> (String, usize) {
-        if chars.len() < 4 || chars[0] != '*' || chars[1] != '*' {
-            return (String::new(), 0);
+    fn try_parse_bold(&self, text: &str, start: usize, output: &mut String) -> Option<usize> {
+        let bytes = text.as_bytes();
+        if start + 3 >= bytes.len() || bytes[start] != b'*' || bytes[start + 1] != b'*' {
+            return None;
         }
 
-        let mut end = 2;
-        while end + 1 < chars.len() {
-            if chars[end] == '*' && chars[end + 1] == '*' {
-                let content: String = chars[2..end].iter().collect();
-                return (format!("<strong>{content}</strong>"), end + 2);
+        let mut end = start + 2;
+        while end + 1 < bytes.len() {
+            if bytes[end] == b'*' && bytes[end + 1] == b'*' {
+                output.push_str("<strong>");
+                let content = &text[(start + 2)..end];
+                self.process_inline_elements_into(content, output);
+                output.push_str("</strong>");
+                return Some(end - start + 2);
             }
             end += 1;
         }
-
-        (String::new(), 0)
+        None
     }
 
-    fn parse_italic(&self, chars: &[char]) -> (String, usize) {
-        if chars.is_empty() || (chars[0] != '*' && chars[0] != '_') {
-            return (String::new(), 0);
+    fn try_parse_italic(&self, text: &str, start: usize, output: &mut String) -> Option<usize> {
+        let bytes = text.as_bytes();
+        if start >= bytes.len() {
+            return None;
         }
 
-        let delimiter = chars[0];
-        let mut end = 1;
-        
-        while end < chars.len() {
-            if chars[end] == delimiter {
-                let content: String = chars[1..end].iter().collect();
-                return (format!("<em>{content}</em>"), end + 1);
+        let delimiter = bytes[start];
+        if delimiter != b'*' && delimiter != b'_' {
+            return None;
+        }
+
+        let mut end = start + 1;
+        while end < bytes.len() {
+            if bytes[end] == delimiter {
+                output.push_str("<em>");
+                let content = &text[(start + 1)..end];
+                output.push_str(content);
+                output.push_str("</em>");
+                return Some(end - start + 1);
             }
             end += 1;
         }
-
-        (String::new(), 0)
+        None
     }
 
-    fn parse_inline_code(&self, chars: &[char]) -> (String, usize) {
-        if chars.is_empty() || chars[0] != '`' {
-            return (String::new(), 0);
+    fn try_parse_inline_code(&self, text: &str, start: usize, output: &mut String) -> Option<usize> {
+        let bytes = text.as_bytes();
+        if start >= bytes.len() || bytes[start] != b'`' {
+            return None;
         }
 
-        let mut end = 1;
-        while end < chars.len() {
-            if chars[end] == '`' {
-                let content: String = chars[1..end].iter().collect();
-                return (format!("<code>{}</code>", html_escape(&content)), end + 1);
+        let mut end = start + 1;
+        while end < bytes.len() {
+            if bytes[end] == b'`' {
+                output.push_str("<code>");
+                let content = &text[(start + 1)..end];
+                html_escape_into(content, output);
+                output.push_str("</code>");
+                return Some(end - start + 1);
             }
             end += 1;
         }
-
-        (String::new(), 0)
+        None
     }
 
-    fn parse_link(&self, chars: &[char]) -> (String, usize) {
-        if chars.is_empty() || chars[0] != '[' {
-            return (String::new(), 0);
+    fn try_parse_link(&self, text: &str, start: usize, output: &mut String) -> Option<usize> {
+        let bytes = text.as_bytes();
+        if start >= bytes.len() || bytes[start] != b'[' {
+            return None;
         }
 
-        let mut bracket_end = 1;
-        while bracket_end < chars.len() && chars[bracket_end] != ']' {
+        let mut bracket_end = start + 1;
+        while bracket_end < bytes.len() && bytes[bracket_end] != b']' {
             bracket_end += 1;
         }
 
-        if bracket_end >= chars.len() || bracket_end + 1 >= chars.len() || chars[bracket_end + 1] != '(' {
-            return (String::new(), 0);
+        if bracket_end >= bytes.len() || bracket_end + 1 >= bytes.len() || bytes[bracket_end + 1] != b'(' {
+            return None;
         }
 
         let mut paren_end = bracket_end + 2;
-        while paren_end < chars.len() && chars[paren_end] != ')' {
+        while paren_end < bytes.len() && bytes[paren_end] != b')' {
             paren_end += 1;
         }
 
-        if paren_end >= chars.len() {
-            return (String::new(), 0);
+        if paren_end >= bytes.len() {
+            return None;
         }
 
-        let link_text: String = chars[1..bracket_end].iter().collect();
-        let url: String = chars[(bracket_end + 2)..paren_end].iter().collect();
+        let link_text = &text[(start + 1)..bracket_end];
+        let url = &text[(bracket_end + 2)..paren_end];
         
-        (format!("<a href=\"{}\">{}</a>", html_escape(&url), html_escape(&link_text)), paren_end + 1)
+        output.push_str("<a href=\"");
+        html_escape_into(url, output);
+        output.push_str("\">");
+        html_escape_into(link_text, output);
+        output.push_str("</a>");
+        
+        Some(paren_end - start + 1)
     }
 }
 
-fn html_escape(text: &str) -> String {
-    text.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
-        .replace('\'', "&#39;")
+#[inline]
+fn html_escape_into(text: &str, output: &mut String) {
+    for byte in text.bytes() {
+        match byte {
+            b'&' => output.push_str("&amp;"),
+            b'<' => output.push_str("&lt;"),
+            b'>' => output.push_str("&gt;"),
+            b'"' => output.push_str("&quot;"),
+            b'\'' => output.push_str("&#39;"),
+            _ => output.push(byte as char),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -306,7 +367,7 @@ mod tests {
 
     #[test]
     fn test_headers() {
-        let mut parser = MarkdownParser::new("# Header 1\n## Header 2\n### Header 3".to_string());
+        let parser = MarkdownParser::new("# Header 1\n## Header 2\n### Header 3");
         let result = parser.parse();
         assert!(result.contains("<h1>Header 1</h1>"));
         assert!(result.contains("<h2>Header 2</h2>"));
@@ -315,7 +376,7 @@ mod tests {
 
     #[test]
     fn test_bold_and_italic() {
-        let mut parser = MarkdownParser::new("This is **bold** and *italic* text".to_string());
+        let parser = MarkdownParser::new("This is **bold** and *italic* text");
         let result = parser.parse();
         assert!(result.contains("<strong>bold</strong>"));
         assert!(result.contains("<em>italic</em>"));
@@ -323,21 +384,21 @@ mod tests {
 
     #[test]
     fn test_inline_code() {
-        let mut parser = MarkdownParser::new("Use `code` for inline code".to_string());
+        let parser = MarkdownParser::new("Use `code` for inline code");
         let result = parser.parse();
         assert!(result.contains("<code>code</code>"));
     }
 
     #[test]
     fn test_links() {
-        let mut parser = MarkdownParser::new("This is a [link](https://example.com)".to_string());
+        let parser = MarkdownParser::new("This is a [link](https://example.com)");
         let result = parser.parse();
         assert!(result.contains("<a href=\"https://example.com\">link</a>"));
     }
 
     #[test]
     fn test_unordered_list() {
-        let mut parser = MarkdownParser::new("- Item 1\n- Item 2\n- Item 3".to_string());
+        let parser = MarkdownParser::new("- Item 1\n- Item 2\n- Item 3");
         let result = parser.parse();
         assert!(result.contains("<ul>"));
         assert!(result.contains("<li>Item 1</li>"));
@@ -348,7 +409,7 @@ mod tests {
 
     #[test]
     fn test_ordered_list() {
-        let mut parser = MarkdownParser::new("1. First\n2. Second\n3. Third".to_string());
+        let parser = MarkdownParser::new("1. First\n2. Second\n3. Third");
         let result = parser.parse();
         assert!(result.contains("<ol>"));
         assert!(result.contains("<li>First</li>"));
@@ -359,7 +420,7 @@ mod tests {
 
     #[test]
     fn test_code_block() {
-        let mut parser = MarkdownParser::new("```\ncode block\nwith multiple lines\n```".to_string());
+        let parser = MarkdownParser::new("```\ncode block\nwith multiple lines\n```");
         let result = parser.parse();
         assert!(result.contains("<pre><code>"));
         assert!(result.contains("code block\nwith multiple lines"));
@@ -368,7 +429,7 @@ mod tests {
 
     #[test]
     fn test_paragraph() {
-        let mut parser = MarkdownParser::new("This is a paragraph\nwith multiple lines.".to_string());
+        let parser = MarkdownParser::new("This is a paragraph\nwith multiple lines.");
         let result = parser.parse();
         assert!(result.contains("<p>This is a paragraph with multiple lines.</p>"));
     }
