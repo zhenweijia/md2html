@@ -1,8 +1,8 @@
-use criterion::{criterion_group, criterion_main, Criterion, BenchmarkId};
-use std::hint::black_box;
-use md2html::MarkdownParser;
-use pulldown_cmark::{Parser, Options, html};
 use comrak::{markdown_to_html, ComrakOptions};
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
+use md2html::MarkdownParser;
+use pulldown_cmark::{html, Options, Parser};
+use std::hint::black_box;
 
 fn create_small_markdown() -> String {
     r#"# Hello World
@@ -26,46 +26,50 @@ fn main() {
     println!("Hello, world!");
 }
 ```
-"#.to_string()
+"#
+    .to_string()
 }
 
 fn create_medium_markdown() -> String {
     let mut content = String::new();
-    
+
     for i in 0..10 {
         content.push_str(&format!("# Section {}\n\n", i));
         content.push_str("This is a paragraph with **bold** and *italic* text. ");
         content.push_str("It contains `inline code` and [links](https://example.com).\n\n");
-        
+
         content.push_str("## Subsection\n\n");
         for j in 0..5 {
             content.push_str(&format!("- List item {}\n", j));
         }
         content.push('\n');
-        
+
         content.push_str("```rust\n");
         content.push_str("fn example() {\n");
         content.push_str("    println!(\"Example code\");\n");
         content.push_str("}\n");
         content.push_str("```\n\n");
     }
-    
+
     content
 }
 
 fn create_large_markdown() -> String {
     let mut content = String::new();
-    
+
     for i in 0..100 {
         content.push_str(&format!("# Chapter {}\n\n", i));
-        
+
         for j in 0..10 {
             content.push_str(&format!("## Section {}.{}\n\n", i, j));
             content.push_str("This is a long paragraph with various **formatting** options. ");
-            content.push_str("It includes *italics*, `code`, and [multiple](https://example1.com) ");
+            content
+                .push_str("It includes *italics*, `code`, and [multiple](https://example1.com) ");
             content.push_str("[different](https://example2.com) [links](https://example3.com). ");
-            content.push_str("The paragraph continues with more text to simulate real-world content.\n\n");
-            
+            content.push_str(
+                "The paragraph continues with more text to simulate real-world content.\n\n",
+            );
+
             if j % 2 == 0 {
                 content.push_str("### Unordered List\n\n");
                 for k in 0..8 {
@@ -79,7 +83,7 @@ fn create_large_markdown() -> String {
             }
             content.push('\n');
         }
-        
+
         content.push_str("```rust\n");
         content.push_str("// Example code block\n");
         content.push_str("fn complex_function() {\n");
@@ -90,7 +94,7 @@ fn create_large_markdown() -> String {
         content.push_str("}\n");
         content.push_str("```\n\n");
     }
-    
+
     content
 }
 
@@ -98,18 +102,14 @@ fn bench_md2html(c: &mut Criterion) {
     let small = create_small_markdown();
     let medium = create_medium_markdown();
     let large = create_large_markdown();
-    
-    c.bench_with_input(
-        BenchmarkId::new("md2html", "small"),
-        &small,
-        |b, input| {
-            b.iter(|| {
-                let parser = MarkdownParser::new(input);
-                black_box(parser.parse())
-            });
-        },
-    );
-    
+
+    c.bench_with_input(BenchmarkId::new("md2html", "small"), &small, |b, input| {
+        b.iter(|| {
+            let parser = MarkdownParser::new(input);
+            black_box(parser.parse())
+        });
+    });
+
     c.bench_with_input(
         BenchmarkId::new("md2html", "medium"),
         &medium,
@@ -120,24 +120,20 @@ fn bench_md2html(c: &mut Criterion) {
             });
         },
     );
-    
-    c.bench_with_input(
-        BenchmarkId::new("md2html", "large"),
-        &large,
-        |b, input| {
-            b.iter(|| {
-                let parser = MarkdownParser::new(input);
-                black_box(parser.parse())
-            });
-        },
-    );
+
+    c.bench_with_input(BenchmarkId::new("md2html", "large"), &large, |b, input| {
+        b.iter(|| {
+            let parser = MarkdownParser::new(input);
+            black_box(parser.parse())
+        });
+    });
 }
 
 fn bench_pulldown_cmark(c: &mut Criterion) {
     let small = create_small_markdown();
     let medium = create_medium_markdown();
     let large = create_large_markdown();
-    
+
     c.bench_with_input(
         BenchmarkId::new("pulldown-cmark", "small"),
         &small,
@@ -150,7 +146,7 @@ fn bench_pulldown_cmark(c: &mut Criterion) {
             });
         },
     );
-    
+
     c.bench_with_input(
         BenchmarkId::new("pulldown-cmark", "medium"),
         &medium,
@@ -163,7 +159,7 @@ fn bench_pulldown_cmark(c: &mut Criterion) {
             });
         },
     );
-    
+
     c.bench_with_input(
         BenchmarkId::new("pulldown-cmark", "large"),
         &large,
@@ -182,38 +178,20 @@ fn bench_comrak(c: &mut Criterion) {
     let small = create_small_markdown();
     let medium = create_medium_markdown();
     let large = create_large_markdown();
-    
+
     let options = ComrakOptions::default();
-    
-    c.bench_with_input(
-        BenchmarkId::new("comrak", "small"),
-        &small,
-        |b, input| {
-            b.iter(|| {
-                black_box(markdown_to_html(input, &options))
-            });
-        },
-    );
-    
-    c.bench_with_input(
-        BenchmarkId::new("comrak", "medium"),
-        &medium,
-        |b, input| {
-            b.iter(|| {
-                black_box(markdown_to_html(input, &options))
-            });
-        },
-    );
-    
-    c.bench_with_input(
-        BenchmarkId::new("comrak", "large"),
-        &large,
-        |b, input| {
-            b.iter(|| {
-                black_box(markdown_to_html(input, &options))
-            });
-        },
-    );
+
+    c.bench_with_input(BenchmarkId::new("comrak", "small"), &small, |b, input| {
+        b.iter(|| black_box(markdown_to_html(input, &options)));
+    });
+
+    c.bench_with_input(BenchmarkId::new("comrak", "medium"), &medium, |b, input| {
+        b.iter(|| black_box(markdown_to_html(input, &options)));
+    });
+
+    c.bench_with_input(BenchmarkId::new("comrak", "large"), &large, |b, input| {
+        b.iter(|| black_box(markdown_to_html(input, &options)));
+    });
 }
 
 criterion_group!(benches, bench_md2html, bench_pulldown_cmark, bench_comrak);
